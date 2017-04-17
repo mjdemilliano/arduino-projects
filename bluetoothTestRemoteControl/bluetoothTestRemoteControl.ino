@@ -10,6 +10,7 @@ SoftwareSerial bluetoothSerial(BLUETOOTH_RX_PIN, BLUETOOTH_TX_PIN);
 char blinkState = 0;
 BluetoothCommandParser btcmdparser;
 int blinkPeriod = 1000;
+int dutyCycle = 255;
 unsigned long lastBlink;
 
 void setup() {
@@ -23,7 +24,7 @@ void setup() {
 
 void toggleLED() {
   blinkState = 1 - blinkState;
-  digitalWrite(LED_PIN, blinkState); 
+  analogWrite(LED_PIN, blinkState ? dutyCycle : 0);
 }
 
 void loop() {
@@ -37,7 +38,7 @@ void loop() {
     Serial.write(bluetoothByte);
     btcmdparser.feed(bluetoothByte);
     if (btcmdparser.parseKeyCommand() == BluetoothCommandParser::Valid) {
-      Serial.print("BT CMD: ");
+      Serial.print("\nBT CMD: ");
       Serial.print(btcmdparser.keyCommand().key, HEX);
       Serial.print(btcmdparser.keyCommand().onoff, HEX);
       Serial.print("\n");
@@ -48,13 +49,26 @@ void loop() {
       }
       btcmdparser.reset();
     }
-    if (btcmdparser.parseGyroData() == BluetoothCommandParser::Valid) {
-      Serial.print("BT GYRO DATA: ");
-      Serial.print(btcmdparser.gyroData().x, 4);
-      Serial.print(btcmdparser.gyroData().y, 4);
-      Serial.print(btcmdparser.gyroData().z, 4);
+    if (btcmdparser.parseQuaternionData() == BluetoothCommandParser::Valid) {
+      /*
+      Serial.print("\nBT Q DATA: ");
+      Serial.print(btcmdparser.quaternionData().x, 4);
+      Serial.print(" ");
+      Serial.print(btcmdparser.quaternionData().y, 4);
+      Serial.print(" ");
+      Serial.print(btcmdparser.quaternionData().z, 4);
+      Serial.print(" ");
+      Serial.print(btcmdparser.quaternionData().w, 4);
       Serial.print("\n");
+      */
       btcmdparser.reset();
+      blinkPeriod = min(1, max(0, (btcmdparser.quaternionData().x + 0.5))) * 3000;
+      //dutyCycle = min(1, max(0, (btcmdparser.quaternionData().y + 0.5))) * 255;
+      Serial.print("Tblink = ");
+      Serial.print(blinkPeriod);
+      Serial.print(" @ ");
+      Serial.print(dutyCycle);
+      Serial.print("/255\n");
     }
   }
   if (now - lastBlink >= blinkPeriod) {

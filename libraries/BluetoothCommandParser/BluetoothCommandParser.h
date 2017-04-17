@@ -19,6 +19,13 @@ struct BluetoothGyroData {
     float z;
 };
 
+struct BluetoothQuaternionData {
+    float x;
+    float y;
+    float z;
+    float w;
+};
+
 #ifdef TESTCASE_BLUETOOTHCOMMANDPARSER
 #include <iostream>
 using namespace std;
@@ -74,6 +81,24 @@ public:
         return Valid;
     }
 
+    ValidationResult parseQuaternionData() {
+        if (_buf.unread() >= 2 && _buf.peek(1) != 'Q') {
+            return Invalid;
+        }
+        if (_buf.unread() < 2 + 4 * sizeof(float)) {
+            return Wait;
+        }
+        char data[4 * sizeof(float)];
+        for (int i = 0; i < 4 * sizeof(float); i++) {
+            data[i] = _buf.peek(2 + i);
+        }
+        _quaternionData.x = *reinterpret_cast<float *>(data + 0 * sizeof(float));
+        _quaternionData.y = *reinterpret_cast<float *>(data + 1 * sizeof(float));
+        _quaternionData.z = *reinterpret_cast<float *>(data + 2 * sizeof(float));
+        _quaternionData.w = *reinterpret_cast<float *>(data + 3 * sizeof(float));
+        return Valid;
+    }
+
     void popUntilWaitOrValid() {
         while (_buf.unread() > 0) {
             if (_buf.peek(0) == '!') {
@@ -83,6 +108,10 @@ public:
                     break;
                 }
                 result = parseGyroData();
+                if (result == Wait || result == Valid) {
+                    break;
+                }
+                result = parseQuaternionData();
                 if (result == Wait || result == Valid) {
                     break;
                 }
@@ -109,11 +138,13 @@ public:
 
     const BluetoothKeyCommand& keyCommand() const { return _keyCommand; }
     const BluetoothGyroData& gyroData() const { return _gyroData; }
+    const BluetoothQuaternionData& quaternionData() const { return _quaternionData; }
 
 private:
     CircularBuffer<char, BLUETOOTH_COMMAND_PARSER_BUF_LENGTH> _buf;
     BluetoothKeyCommand _keyCommand;
     BluetoothGyroData _gyroData;
+    BluetoothQuaternionData _quaternionData;
 };
 
 #ifdef TESTCASE_BLUETOOTHCOMMANDPARSER
@@ -122,57 +153,87 @@ using namespace std;
 
 int main(int argc, char *argv[]) {
     BluetoothCommandParser btcmdparser;
-    cout << "Testing !B!B11:" << endl;
-    btcmdparser.feed('!');
-    btcmdparser.feed('B');
-    btcmdparser.feed('!');
-    btcmdparser.feed('B');
-    btcmdparser.feed('1');
-    btcmdparser.feed('1');
-    btcmdparser.feed(':');
-    if (btcmdparser.parseKeyCommand() != BluetoothCommandParser::Valid) {
-        cout << "valid: expected valid, but got something else" << endl;
-        return 1;
-    }
-    cout << "key = " << hex << static_cast<int>(btcmdparser.keyCommand().key)
-        << ", onoff = " << hex << static_cast<int>(btcmdparser.keyCommand().onoff)
-        << ", extra = " << btcmdparser.keyCommand().extra << endl;
-    btcmdparser.reset();
-    cout << endl << "Testing !B309" << endl;
-    btcmdparser.feed('!');
-    btcmdparser.feed('B');
-    if (btcmdparser.parseKeyCommand() != BluetoothCommandParser::Wait) {
-        cout << "valid: expected wait, but failed" << endl;
-        return 1;
-    }
-    btcmdparser.feed('3');
-    btcmdparser.feed('0');
-    btcmdparser.feed('9');
-    if (btcmdparser.parseKeyCommand() == BluetoothCommandParser::Valid) {
+    {
+        cout << "Testing !B!B11:" << endl;
+        btcmdparser.feed('!');
+        btcmdparser.feed('B');
+        btcmdparser.feed('!');
+        btcmdparser.feed('B');
+        btcmdparser.feed('1');
+        btcmdparser.feed('1');
+        btcmdparser.feed(':');
+        if (btcmdparser.parseKeyCommand() != BluetoothCommandParser::Valid) {
+            cout << "valid: expected valid, but got something else" << endl;
+            return 1;
+        }
         cout << "key = " << hex << static_cast<int>(btcmdparser.keyCommand().key)
             << ", onoff = " << hex << static_cast<int>(btcmdparser.keyCommand().onoff)
             << ", extra = " << btcmdparser.keyCommand().extra << endl;
-    } else {
-        cout << "valid: false" << endl;
-        return 1;
+        btcmdparser.reset();
     }
-    btcmdparser.reset();
-    cout << endl << "Testing !G<x><y><z>" << endl;
-    btcmdparser.feed('!');
-    btcmdparser.feed('G');
-    float x = 10.0;
-    float y = 20.0;
-    float z = -0.50;
-    for (int i = 0; i < sizeof(float); ++i) { btcmdparser.feed(*(reinterpret_cast<char *>(&x) + i)); }
-    for (int i = 0; i < sizeof(float); ++i) { btcmdparser.feed(*(reinterpret_cast<char *>(&y) + i)); }
-    for (int i = 0; i < sizeof(float); ++i) { btcmdparser.feed(*(reinterpret_cast<char *>(&z) + i)); }
-    if (btcmdparser.parseGyroData() == BluetoothCommandParser::Valid) {
-        cout << "x = " << btcmdparser.gyroData().x
-            << ", y = " << btcmdparser.gyroData().y
-            << ", z = " << btcmdparser.gyroData().z << endl;
-    } else {
-        cout << "valid: false" << endl;
-        return 1;
+    {
+        cout << endl << "Testing !B309" << endl;
+        btcmdparser.feed('!');
+        btcmdparser.feed('B');
+        if (btcmdparser.parseKeyCommand() != BluetoothCommandParser::Wait) {
+            cout << "valid: expected wait, but failed" << endl;
+            return 1;
+        }
+        btcmdparser.feed('3');
+        btcmdparser.feed('0');
+        btcmdparser.feed('9');
+        if (btcmdparser.parseKeyCommand() == BluetoothCommandParser::Valid) {
+            cout << "key = " << hex << static_cast<int>(btcmdparser.keyCommand().key)
+                << ", onoff = " << hex << static_cast<int>(btcmdparser.keyCommand().onoff)
+                << ", extra = " << btcmdparser.keyCommand().extra << endl;
+        } else {
+            cout << "valid: false" << endl;
+            return 1;
+        }
+        btcmdparser.reset();
+    }
+    {
+        cout << endl << "Testing !G<x><y><z>" << endl;
+        btcmdparser.feed('!');
+        btcmdparser.feed('G');
+        float x = 10.0;
+        float y = 20.0;
+        float z = -0.50;
+        for (int i = 0; i < sizeof(float); ++i) { btcmdparser.feed(*(reinterpret_cast<char *>(&x) + i)); }
+        for (int i = 0; i < sizeof(float); ++i) { btcmdparser.feed(*(reinterpret_cast<char *>(&y) + i)); }
+        for (int i = 0; i < sizeof(float); ++i) { btcmdparser.feed(*(reinterpret_cast<char *>(&z) + i)); }
+        if (btcmdparser.parseGyroData() == BluetoothCommandParser::Valid) {
+            cout << "x = " << btcmdparser.gyroData().x
+                << ", y = " << btcmdparser.gyroData().y
+                << ", z = " << btcmdparser.gyroData().z << endl;
+        } else {
+            cout << "valid: false" << endl;
+            return 1;
+        }
+        btcmdparser.reset();
+    }
+    {
+        cout << endl << "Testing !Q<x><y><z><w>" << endl;
+        btcmdparser.feed('!');
+        btcmdparser.feed('Q');
+        float x = 0.03;
+        float y = 0.2;
+        float z = -0.50;
+        float w = 0.923;
+        for (int i = 0; i < sizeof(float); ++i) { btcmdparser.feed(*(reinterpret_cast<char *>(&x) + i)); }
+        for (int i = 0; i < sizeof(float); ++i) { btcmdparser.feed(*(reinterpret_cast<char *>(&y) + i)); }
+        for (int i = 0; i < sizeof(float); ++i) { btcmdparser.feed(*(reinterpret_cast<char *>(&z) + i)); }
+        for (int i = 0; i < sizeof(float); ++i) { btcmdparser.feed(*(reinterpret_cast<char *>(&w) + i)); }
+        if (btcmdparser.parseQuaternionData() == BluetoothCommandParser::Valid) {
+            cout << "x = " << btcmdparser.quaternionData().x
+                << ", y = " << btcmdparser.quaternionData().y
+                << ", z = " << btcmdparser.quaternionData().z
+                << ", w = " << btcmdparser.quaternionData().w << endl;
+        } else {
+            cout << "valid: false" << endl;
+            return 1;
+        }
+        btcmdparser.reset();
     }
 }
 #endif
