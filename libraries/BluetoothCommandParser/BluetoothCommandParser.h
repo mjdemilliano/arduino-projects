@@ -35,7 +35,7 @@ class BluetoothCommandParser
 {
 public:
     enum ValidationResult { Valid, Invalid, Wait };
-        
+
     BluetoothCommandParser()
         : _buf()
     {
@@ -72,7 +72,7 @@ public:
             return Wait;
         }
         char gyroData[3 * sizeof(float)];
-        for (int i = 0; i < 3 * sizeof(float); i++) {
+        for (unsigned int i = 0; i < 3 * sizeof(float); i++) {
             gyroData[i] = _buf.peek(2 + i);
         }
         _gyroData.x = *reinterpret_cast<float *>(gyroData + 0 * sizeof(float));
@@ -89,7 +89,7 @@ public:
             return Wait;
         }
         char data[4 * sizeof(float)];
-        for (int i = 0; i < 4 * sizeof(float); i++) {
+        for (unsigned int i = 0; i < 4 * sizeof(float); i++) {
             data[i] = _buf.peek(2 + i);
         }
         _quaternionData.x = *reinterpret_cast<float *>(data + 0 * sizeof(float));
