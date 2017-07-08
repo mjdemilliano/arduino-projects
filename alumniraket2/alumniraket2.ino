@@ -1,6 +1,7 @@
 #include <CircularBuffer.h>
 #include <BluetoothCommandParser.h>
 #include <SoftwareSerial.h>
+#include <mpu9265.h>
 
 #define MOTOR_PIN_A 9
 #define MOTOR_PIN_B 10
@@ -9,12 +10,14 @@
 #define BLUETOOTH_TX_PIN 4
 
 #define STEP_TIME 1000
-#define STEP_SIZE 10
+#define STEP_SIZE 40
 #define MAX_SPEED 250
 
 #define LED_PIN 13
 
 //#define DEBUG_BLUETOOTH 1
+#define LOG_IMU_DATA 1
+#define READ_IMU
 
 int speed = 0; // negative value means running backwards. maximum is 255
 unsigned long checkpointTime = STEP_TIME;
@@ -22,6 +25,9 @@ int direction = 1;
 int active = 0;
 int ledStatus = 0;
 BluetoothCommandParser btcmdparser;
+int16_t g_accelerations[3];
+int16_t g_angularVelocities[3];
+uint32_t num_times_measured = 0;
 
 SoftwareSerial bluetoothSerial(BLUETOOTH_RX_PIN, BLUETOOTH_TX_PIN);
 
@@ -32,9 +38,14 @@ void setup() {
   pinMode(MOTOR_PIN_B, OUTPUT);
   pinMode(BLUETOOTH_RX_PIN, INPUT);
   pinMode(BLUETOOTH_TX_PIN, OUTPUT);
+  mpu9265_setup();
 }
 
 void setSpeed(int speed) {
+  // If going forward, B = low, and A = high means that the motor moves, so low PWM duty cycle means
+  // lower speed.
+  // If going backward, B = high, and A = high means that the motor stops, so high PWM duty cycle means
+  // lower speed.
   if (speed >= 0) {
     analogWrite(MOTOR_PIN_A, speed);
     digitalWrite(MOTOR_PIN_B, 0);
@@ -53,6 +64,7 @@ void loop() {
   char c = 0;
   char btbyte = 0;
   bool havebtcmd = false;
+  uint8_t result;
   
 #if 0
   if (millis() > checkpointTime) {
@@ -83,7 +95,8 @@ void loop() {
     c = Serial.read();
   } else if (bluetoothSerial.available()) {
     btbyte = bluetoothSerial.read();
-    btcmdparser.feed(btbyte);
+    //btcmdparser.feed(btbyte);
+    c = btbyte;
 #ifdef DEBUG_BLUETOOTH
     Serial.print("BT>uC: 0x");
     Serial.print(btbyte, HEX);
@@ -148,9 +161,33 @@ void loop() {
       bluetoothSerial.print(speed);
       bluetoothSerial.print("\n");
     }
-    // If going forward, B = low, and A = high means that the motor moves, so low PWM duty cycle means
-    // lower speed.
-    // If going backward, B = high, and A = high means that the motor stops, so high PWM duty cycle means
-    // lower speed.
-  }    
+  }
+#ifdef READ_IMU
+  if (mpu9265_data_ready_flag) {
+    mpu9265_data_ready_flag = 0;
+    result = readSensors(g_accelerations, g_angularVelocities);
+    num_times_measured++;
+#ifdef LOG_IMU_DATA
+    if (result == 0)
+    {
+      bluetoothSerial.print(millis());
+      bluetoothSerial.print("\t");
+      bluetoothSerial.print(num_times_measured);
+      bluetoothSerial.print("\t");
+      bluetoothSerial.print(g_accelerations[0]);
+      bluetoothSerial.print("\t");
+      bluetoothSerial.print(g_accelerations[1]);
+      bluetoothSerial.print("\t");
+      bluetoothSerial.print(g_accelerations[2]);
+      bluetoothSerial.print("\t");
+      bluetoothSerial.print(g_angularVelocities[0]);
+      bluetoothSerial.print("\t");
+      bluetoothSerial.print(g_angularVelocities[1]);
+      bluetoothSerial.print("\t");
+      bluetoothSerial.print(g_angularVelocities[2]);
+      bluetoothSerial.print("\r\n");
+    }
+#endif
+  }
+#endif
 }
